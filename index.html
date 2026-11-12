@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operación Extracción</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #07090d; color: #e8e8e8;
+    font-family: "Consolas", "Courier New", monospace; user-select: none; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,.85); }
+  #crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+  #crosshair::after { top: 10px; left: 0; height: 2px; width: 22px; }
+  #crosshair .gap { position: absolute; left: 7px; top: 7px; width: 8px; height: 8px; background: transparent; }
+  #crosshair.hit::before, #crosshair.hit::after { background: #ff3b3b; box-shadow: 0 0 6px #ff3b3b; }
+
+  #objective { position: absolute; top: 14px; left: 16px; font-size: 14px; line-height: 1.5;
+    text-shadow: 0 0 4px #000; background: rgba(0,0,0,.35); padding: 8px 12px; border-left: 3px solid #4caf50; }
+  #objective b { color: #8bc34a; }
+  #minimap { position: absolute; top: 14px; right: 16px; border: 2px solid rgba(255,255,255,.35); background: rgba(0,0,0,.5); }
+
+  #weapons { position: absolute; right: 22px; bottom: 22px; text-align: right; }
+  .slot { font-size: 15px; padding: 6px 12px; margin-top: 6px; background: rgba(0,0,0,.4);
+    border-right: 3px solid transparent; opacity: .55; }
+  .slot.active { opacity: 1; border-right-color: #ffb300; background: rgba(0,0,0,.6); }
+  .slot .ammo { font-size: 26px; font-weight: bold; margin-left: 10px; }
+  .slot.empty .ammo { color: #ff5252; }
+  #boost { position: absolute; left: 22px; bottom: 22px; font-size: 15px; color: #4dd0e1; text-shadow: 0 0 6px #00bcd4; }
+
+  #msg { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); font-size: 20px; font-weight: bold;
+    text-shadow: 0 0 6px #000; opacity: 0; transition: opacity .25s; text-align: center; }
+  #msg.show { opacity: 1; }
+
+  /* ---------- Pantalla de inicio / pausa / fin: cartel de señalética hospitalaria ---------- */
+  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10; padding: 16px;
+    background: radial-gradient(ellipse at center, rgba(10,14,16,.80) 0%, rgba(4,6,8,.96) 75%); }
+  #overlay::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 120%, rgba(190,30,20,.55), transparent 60%);
+    animation: alarma 3.2s ease-in-out infinite; }
+  @keyframes alarma { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+  #overlay.hidden { display: none; }
+
+  #overlay .box { position: relative; width: min(680px, 100%); text-align: center; padding: 0 0 30px;
+    background: #141b1a; border: 2px solid #2c3a37; box-shadow: 0 24px 60px rgba(0,0,0,.7); overflow: hidden; }
+  #overlay .box::before { content: ""; display: block; height: 16px;
+    background: repeating-linear-gradient(-45deg, #ffb300 0 18px, #14110a 18px 36px); }
+  #overlay .sign { display: flex; justify-content: space-between; gap: 12px; padding: 10px 22px; font-size: 13px;
+    color: #9fb3ad; border-bottom: 1px solid #2c3a37; background: #101716; }
+  #overlay .sign b { color: #e9efe9; font-weight: 700; }
+  #overlay h1 { margin: 26px 22px 10px; font: 900 clamp(30px, 7vw, 56px)/1.05 Impact, "Arial Black", "Arial Narrow", sans-serif;
+    letter-spacing: .05em; color: #e9efe9; text-shadow: 3px 3px 0 #8e1f18; }
+  #overlay h1.bad { color: #ff4a3d; text-shadow: 3px 3px 0 #4a0d09, 0 0 26px rgba(255,60,40,.55); }
+  #overlay h1.good { color: #7ee08a; text-shadow: 3px 3px 0 #123d19, 0 0 26px rgba(70,220,110,.45); }
+  #overlay p { max-width: 54ch; margin: 10px auto; padding: 0 22px; line-height: 1.65; font-size: 15px; color: #cbd8d3; white-space: pre-line; }
+  #overlay button { margin-top: 22px; padding: 14px 46px; font: inherit; font-size: 19px; font-weight: 700; letter-spacing: .12em; cursor: pointer;
+    background: #ffb300; color: #14110a; border: 0; border-radius: 2px; box-shadow: 0 4px 0 #8a5f00; transition: transform .08s, box-shadow .08s, background .15s; }
+  #overlay button:hover { background: #ffca28; }
+  #overlay button:active { transform: translateY(3px); box-shadow: 0 1px 0 #8a5f00; }
+  #overlay button:focus-visible { outline: 3px solid #e9efe9; outline-offset: 3px; }
+  kbd { background: #263238; padding: 2px 7px; border-radius: 3px; border: 1px solid #546e7a; }
+  #overlay .controls { display: none; width: min(460px, calc(100% - 44px)); margin: 18px auto 0; text-align: left;
+    grid-template-columns: auto 1fr; gap: 10px 18px; align-items: center; font-size: 14px; color: #cbd8d3;
+    padding-top: 18px; border-top: 1px solid #2c3a37; }
+  #overlay.start .controls { display: grid; }
+  #overlay .controls dt { display: flex; gap: 5px; justify-content: flex-end; margin: 0; }
+  #overlay .controls dd { margin: 0; }
+  #overlay .controls kbd { min-width: 28px; padding: 3px 8px; text-align: center; font: 700 13px inherit; color: #e9efe9;
+    border-bottom-width: 3px; }
+  @media (prefers-reduced-motion: reduce) { #overlay::before { animation: none; opacity: .5; } }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="objective">
+    <b>OBJETIVO:</b> llega a la zona de extracción (verde)<br>
+    Zombis restantes: <span id="zcount">0</span>
+  </div>
+  <canvas id="minimap" width="160" height="100"></canvas>
+  <div id="msg"></div>
+  <div id="boost"></div>
+  <div id="weapons"></div>
+</div>
+
+<div id="overlay">
+  <div class="box">
+    <div class="sign"><span><b>Hospital San Lázaro</b></span><span>Zona infestada · Cuarentena activa</span></div>
+    <h1 id="ov-title">OPERACIÓN EXTRACCIÓN</h1>
+    <p id="ov-text">Cargando recursos...</p>
+    <dl class="controls">
+      <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Moverte</dd>
+      <dt><kbd>Mouse</kbd></dt><dd>Apuntar</dd>
+      <dt><kbd>Clic</kbd></dt><dd>Disparar (una bala por clic)</dd>
+      <dt><kbd>1</kbd><kbd>2</kbd></dt><dd>Cambiar de arma</dd>
+      <dt><kbd>R</kbd></dt><dd>Reiniciar tras terminar</dd>
+    </dl>
+    <button id="ov-btn" style="display:none">JUGAR</button>
+  </div>
+</div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>
